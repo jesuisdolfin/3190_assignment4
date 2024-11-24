@@ -1,13 +1,10 @@
-// Maurissa Higgins
-// maukhigs@iastate.edu
-// November 16th, 2024
-
 var express = require("express");
 var cors = require("cors");
 var fs = require("fs");
 var bodyParser = require("body-parser");
 var multer = require("multer");
 const { MongoClient } = require("mongodb");
+var path = require("path"); // Add path module
 
 // MySQL
 const mysql = require("mysql2");
@@ -42,8 +39,8 @@ const storage = multer.diskStorage({
   },
 });
 const upload = multer({ storage: storage });
+
 // Create "uploads" folder if it doesn't exist
-// const fs = require("fs");
 if (!fs.existsSync("uploads")) {
   fs.mkdirSync("uploads");
 }
@@ -67,22 +64,60 @@ app.get("/contact", (req, res) => {
 
 app.get("/:id", async (req, res) => {
   const id = Number(req.params.id);
-  console.log("Robot to find :", id);
-  await client.connect();
-  console.log("Node connected successfully to GET-id MongoDB");
-  const query = { id: id };
-  const results = await db.collection("robot").findOne(query);
-  console.log("Results :", results);
-  if (!results) res.send("Not Found").status(404);
-  else res.send(results).status(200);
+  console.log("Robot to find:", id);
+  try {
+    await client.connect();
+    console.log("Node connected successfully to GET-id MongoDB");
+    const query = { id: id };
+    const results = await db.collection("robot").findOne(query);
+    console.log("Results:", results);
+    if (!results) return res.status(404).send("Not Found");
+    else return res.status(200).send(results);
+  } catch (err) {
+    console.error("MongoDB connection error:", err);
+    res.status(500).send({ error: "Error connecting to MongoDB" });
+  } finally {
+    await client.close();
+  }
+});
+
+app.get("/contact/name", (req, res) => {
+  const { contact_name } = req.query;
+
+  try {
+    // Validate if contact_name is provided
+    if (!contact_name) {
+      return res.status(400).send({ error: "contact_name is required" });
+    }
+
+    // Query to search for exact or partial matches, case sensitive
+    const query =
+      "SELECT * FROM contact WHERE LOWER(contact_name) LIKE LOWER(?)";
+    const searchValue = `%${contact_name}%`; // Add wildcards for partial match
+    mysqldb.query(query, [searchValue], (err, result) => {
+      if (err) {
+        console.error("Error fetching contacts:", err);
+        return res.status(500).send({ error: "Error fetching contacts" });
+      }
+      res.status(200).send(result);
+    });
+  } catch (err) {
+    console.error({
+      error: "An unexpected error occurred in GET by name" + err,
+    });
+    res
+      .status(500)
+      .send({ error: "An unexpected error occurred in GET by name" + err });
+  }
 });
 
 app.post("/contact", upload.single("image"), (req, res) => {
   const { contact_name, phone_number, message } = req.body;
   const imageUrl = req.file ? `/uploads/${req.file.filename}` : null;
+
   // Step 1: Check if contact_name already exists
   const checkQuery = "SELECT * FROM contact WHERE contact_name = ?";
-  db.query(checkQuery, [contact_name], (checkErr, checkResult) => {
+  mysqldb.query(checkQuery, [contact_name], (checkErr, checkResult) => {
     if (checkErr) {
       console.error("Database error during validation:", checkErr);
       return res
@@ -90,32 +125,32 @@ app.post("/contact", upload.single("image"), (req, res) => {
         .send({ error: "Error checking contact name: " + checkErr.message });
     }
     if (checkResult.length > 0) {
-      // If contact_name exists, send a conflict response
       return res.status(409).send({ error: "Contact name already exists." });
     }
-  });
-  const query =
-    "INSERT INTO contact (contact_name, phone_number, message, image_url) VALUES (?, ?, ?, ?)";
-  db.query(
-    query,
-    [contact_name, phone_number, message, imageUrl],
-    (err, result) => {
-      if (err) {
-        console.log(err);
-        res.status(500).send({ error: "Error adding contact" + err });
-      } else {
-        res.status(201).send("Contact added successfully");
+
+    // Step 2: Insert contact
+    const query =
+      "INSERT INTO contact (contact_name, phone_number, message, image_url) VALUES (?, ?, ?, ?)";
+    mysqldb.query(
+      query,
+      [contact_name, phone_number, message, imageUrl],
+      (err, result) => {
+        if (err) {
+          console.log(err);
+          res.status(500).send({ error: "Error adding contact" + err });
+        } else {
+          res.status(201).send("Contact added successfully");
+        }
       }
-    }
-  );
+    );
+  });
 });
 
 app.delete("/contact/:id", (req, res) => {
   const id = req.params.id;
-
   try {
     const query = "DELETE FROM contact WHERE id = ?";
-    db.query(query, [id], (err, result) => {
+    mysqldb.query(query, [id], (err, result) => {
       if (err) {
         console.log(err);
         res.status(500).send({ err: "Error deleting contact" });
@@ -126,7 +161,6 @@ app.delete("/contact/:id", (req, res) => {
       }
     });
   } catch (err) {
-    // Handle synchronous errors
     console.error("Error in DELETE /contact:", err);
     res.status(500).send({
       error: "An unexpected error occurred in DELETE: " + err.message,
@@ -135,23 +169,38 @@ app.delete("/contact/:id", (req, res) => {
 });
 
 app.put("/contact/:id", (req, res) => {
+  const { contact_name, phone_number, message } = req.body;
   const id = req.params.id;
 
-  const query = `
-UPDATE contact
-SET contact_name = ?, phone_number = ?, message = ?
-WHERE id = ?
-`;
-  db.query(query, [contact_name, phone_number, message, id], (err, result) => {
-    if (err) {
-      console.log(err);
-      res.status(500).send({ err: "Error updating contact" });
-    } else if (result.affectedRows === 0) {
-      res.status(404).send({ err: "Contact not found" });
-    } else {
-      res.status(200).send("Contact updated successfully");
-    }
-  });
+  try {
+    const query = `
+    UPDATE contact
+    SET contact_name = ?, phone_number = ?, message = ?
+    WHERE id = ?`;
+
+    mysqldb.query(
+      query,
+      [contact_name, phone_number, message, id],
+      (err, result) => {
+        if (err) {
+          console.log(err);
+          res.status(500).send({ err: "Error updating contact" });
+        } else if (result.affectedRows === 0) {
+          res.status(404).send({ err: "Contact not found" });
+        } else {
+          res.status(200).send("Contact updated successfully");
+        }
+      }
+    );
+  } catch (err) {
+    // Handle synchronous errors
+    console.error("Error in UPDATE /contact:", err);
+    res
+      .status(500)
+      .send({
+        error: "An unexpected error occurred in UPDATE: " + err.message,
+      });
+  }
 });
 
 app.listen(port, () => {

@@ -1,30 +1,38 @@
 import React from "react";
 import { Link } from "react-router-dom";
+
 const Sidebar = () => {
   return (
-    <div
-      className="d-flex flex-column vh-100 p-3 bg-light"
-      style={{ width: "250px" }}
-    >
-      <h2 className="text-center">Navigation</h2>
-      <ul className="nav flex-column">
-        <li className="nav-item">
-          <Link to="/" className="nav-link text-dark">
+    <nav>
+      <ul className="list-unstyled">
+        <li className="mb-3">
+          <Link to="/" className="text-white text-decoration-none">
             Home
           </Link>
         </li>
-        <li className="nav-item">
-          <Link to="/contacts" className="nav-link text-dark">
-            View Contacts
+        <li className="mb-3">
+          <Link to="/contact" className="text-white text-decoration-none">
+            Contacts
           </Link>
         </li>
-        <li className="nav-item">
-          <Link to="/add-contact" className="nav-link text-dark">
+        <li className="mb-3">
+          <Link to="/add-contact" className="text-white text-decoration-none">
             Add Contact
           </Link>
         </li>
+        <li className="mb-3">
+          <Link to="/deletecontact" className="text-white text-decoration-none">
+            Delete Contact
+          </Link>
+        </li>
+        <li className="mb-3">
+          <Link to="/searchContacts" className="text-white text-decoration-none">
+            Search Contacts
+          </Link>
+        </li>
       </ul>
-    </div>
+    </nav>
   );
 };
+
 export default Sidebar;
